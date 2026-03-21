@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Fill the Board</title>
+    <!-- YouTube Playables SDK — MUST be first script -->
+    <script src="https://www.youtube.com/game_api/v1" nonce="ItXjHmsnnkZQj8m6RJravQ"></script>
+    <script nonce="ItXjHmsnnkZQj8m6RJravQ">
+    // SDK safety net: if any JS error occurs before SDK is signaled, call firstFrameReady + gameReady
+    window.__sdkSignaled = false;
+    window.onerror = function(msg, src, line, col, err) {
+      if (!window.__sdkSignaled && typeof ytgame !== 'undefined') {
+        window.__sdkSignaled = true;
+        try { ytgame.game.firstFrameReady(); } catch(e){}
+        setTimeout(function() {
+          try { ytgame.game.gameReady(); } catch(e){}
+        }, 100);
+      }
+    };
+    window.addEventListener('unhandledrejection', function(e) {
+      if (!window.__sdkSignaled && typeof ytgame !== 'undefined') {
+        window.__sdkSignaled = true;
+        try { ytgame.game.firstFrameReady(); } catch(e2){}
+        setTimeout(function() {
+          try { ytgame.game.gameReady(); } catch(e2){}
+        }, 100);
+      }
+    });
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap" rel="stylesheet" nonce="ItXjHmsnnkZQj8m6RJravQ">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: #1a1a2e;
+            font-family: 'Fredoka One', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* ── Portrait container (centered column, max 420px) ── */
+        .portrait-container {
+            position: fixed;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            max-width: min(420px, 90vw);
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            pointer-events: none;
+        }
+
+        .portrait-container > * {
+            pointer-events: auto;
+        }
+
+        /* ── In-game HUD ── */
+        #ui-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+
+        /* ── Paused overlay — blocks all interaction ── */
+        #pause-screen {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 25;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0);
+            backdrop-filter: blur(0px);
+            -webkit-backdrop-filter: blur(0px);
+            pointer-events: none;
+            opacity: 0;
+            transition: background 0.35s ease, backdrop-filter 0.35s ease, -webkit-backdrop-filter 0.35s ease, opacity 0.35s ease;
+        }
+        #pause-screen.show {
+            background: rgba(0,0,0,0.45);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            pointer-events: auto;
+            opacity: 1;
+        }
+
+        #yt-pause-overlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 40;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+        }
+        #yt-pause-overlay.show {
+            display: flex;
+        }
+        .pause-text {
+            font-size: clamp(24px, 8vmin, 48px);
+            color: #fff;
+            letter-spacing: clamp(4px, 1.5vmin, 8px);
+            text-shadow: 0 2px 12px rgba(0,0,0,0.4);
+        }
+
+        /* ── Main Menu Screen (transparent overlay) ── */
+        #menu-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 20;
+            pointer-events: auto;
+            cursor: pointer;
+        }
+
+        #menu-screen .menu-wrapper {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            max-width: min(420px, 90vw);
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            padding: clamp(20px, 8vmin, 60px) clamp(12px, 4vmin, 30px) 5px;
+            pointer-events: none;
+        }
+
+        /* Top section: title + best */
+        .menu-top {
+            position: absolute;
+            top: clamp(4px, 5vh, 60px);
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            pointer-events: none;
+            transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease;
+        }
+
+        .menu-logo {
+            width: min(clamp(120px, 40vmin, 216px), 28vh);
+            height: auto;
+            filter: drop-shadow(0 4px 12px rgba(0,0,0,0.15));
+            animation: logo-float 3s ease-in-out infinite;
+        }
+
+        @keyframes logo-float {
+            0%, 100% { transform: translateY(0) scale(1); }
+            50% { transform: translateY(clamp(-4px, -1.2vmin, -8px)) scale(1.02); }
+        }
+
+        .menu-best {
+            font-size: clamp(9px, 2.5vmin, 13px);
+            color: rgba(255,255,255,0.4);
+            letter-spacing: 2px;
+            margin-top: 4px;
+        }
+
+        /* Middle section: tap to start label */
+        .menu-middle {
+            pointer-events: none;
+        }
+
+        .menu-tap {
+            font-size: clamp(12px, 4vmin, 20px);
+            color: rgba(0,0,0,0.45);
+            letter-spacing: clamp(2px, 1vmin, 5px);
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+
+        @keyframes btn-shake {
+            0%, 100% { transform: translateX(0); }
+            15% { transform: translateX(-3px) rotate(-1deg); }
+            30% { transform: translateX(3px) rotate(1deg); }
+            45% { transform: translateX(-2px) rotate(-0.5deg); }
+            60% { transform: translateX(2px) rotate(0.5deg); }
+            75% { transform: translateX(-1px); }
+        }
+
+        .btn-shake {
+            animation: btn-shake 0.6s ease-in-out infinite;
+        }
+
+        /* Bottom section: menu buttons */
+        .menu-bottom {
+            position: absolute;
+            bottom: clamp(2px, 6vh, 10%);
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            max-width: min(420px, 90vw);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: clamp(2px, 0.8vh, 10px);
+            pointer-events: auto;
+            transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease;
+        }
+
+        /* Exit animations */
+        #menu-screen.exiting .menu-top {
+            transform: translateX(-50%) translateY(-120px);
+            opacity: 0;
+        }
+        #menu-screen.exiting .menu-bottom {
+            transform: translateX(-50%) translateY(120px);
+            opacity: 0;
+        }
+
+        /* ── 3D Colored Buttons ── */
+        .btn-3d {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            max-width: clamp(180px, 50vmin, 280px);
+            height: clamp(36px, 10vmin, 56px);
+            border: none;
+            border-radius: clamp(10px, 3vmin, 16px);
+            font-family: 'Fredoka One', sans-serif;
+            font-size: clamp(12px, 3.5vmin, 20px);
+            letter-spacing: 3px;
+            color: #fff;
+            cursor: pointer;
+            position: relative;
+            transition: transform 0.1s ease;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .btn-3d::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 100%;
+            border-radius: 16px;
+            z-index: -1;
+        }
+
+        .btn-3d:active {
+            transform: translateY(3px);
+        }
+
+        .btn-3d:active::after {
+            box-shadow: none;
+        }
+
+        /* Yellow / Gold button */
+        .btn-yellow {
+            background: #FFD036;
+            color: #5a4500;
+            text-shadow: none;
+            box-shadow: 0 5px 0 #C9A020, 0 8px 15px rgba(0,0,0,0.1);
+        }
+        .btn-yellow:active {
+            box-shadow: 0 2px 0 #C9A020, 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        /* Green button */
+        .btn-green {
+            background: #5BC95F;
+            box-shadow: 0 5px 0 #3A9E3E, 0 8px 15px rgba(0,0,0,0.1);
+        }
+        .btn-green:active {
+            box-shadow: 0 2px 0 #3A9E3E, 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        /* Blue button */
+        .btn-blue {
+            background: #4DABF7;
+            box-shadow: 0 5px 0 #2B8AD4, 0 8px 15px rgba(0,0,0,0.1);
+        }
+        .btn-blue:active {
+            box-shadow: 0 2px 0 #2B8AD4, 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        /* Purple button */
+        .btn-purple {
+            background: #9775FA;
+            box-shadow: 0 5px 0 #7048D4, 0 8px 15px rgba(0,0,0,0.1);
+        }
+        .btn-purple:active {
+            box-shadow: 0 2px 0 #7048D4, 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        /* Red/Coral button */
+        .btn-red {
+            background: #FF6B6B;
+            box-shadow: 0 5px 0 #D44848, 0 8px 15px rgba(0,0,0,0.1);
+        }
+        .btn-red:active {
+            box-shadow: 0 2px 0 #D44848, 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        /* Orange button (logo harmonious) */
+        .btn-orange {
+            background: #FF9F43;
+            box-shadow: 0 5px 0 #D4802A, 0 8px 15px rgba(0,0,0,0.1);
+        }
+        .btn-orange:active {
+            box-shadow: 0 2px 0 #D4802A, 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        /* Pink button (logo harmonious) */
+        .btn-pink {
+            background: #FF6B9D;
+            box-shadow: 0 5px 0 #D44A7A, 0 8px 15px rgba(0,0,0,0.1);
+        }
+        .btn-pink:active {
+            box-shadow: 0 2px 0 #D44A7A, 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        /* Small variant */
+        .btn-3d.btn-small {
+            max-width: clamp(130px, 36vmin, 200px);
+            height: min(clamp(30px, 8.5vmin, 48px), 7vh);
+            font-size: clamp(10px, 3vmin, 16px);
+            letter-spacing: 2px;
+            border-radius: clamp(8px, 2.5vmin, 14px);
+        }
+
+        .btn-3d.btn-tiny {
+            max-width: clamp(90px, 25vmin, 140px);
+            height: min(clamp(24px, 6vmin, 34px), 5.5vh);
+            font-size: clamp(8px, 2vmin, 11px);
+            letter-spacing: 1.5px;
+            border-radius: clamp(6px, 1.8vmin, 10px);
+            margin-top: clamp(2px, 0.8vmin, 6px);
+        }
+
+        .btn-icon {
+            width: clamp(16px, 5vmin, 26px);
+            height: clamp(16px, 5vmin, 26px);
+            pointer-events: none;
+            filter: brightness(0) invert(1);
+        }
+
+        .btn-icon-sm {
+            width: clamp(12px, 3.5vmin, 18px);
+            height: clamp(12px, 3.5vmin, 18px);
+            pointer-events: none;
+            filter: brightness(0) invert(1);
+        }
+
+        /* Button row (side by side) */
+        .btn-row {
+            display: flex;
+            gap: clamp(6px, 2vmin, 12px);
+            width: 100%;
+            max-width: clamp(180px, 50vmin, 280px);
+        }
+
+        .btn-row .btn-3d {
+            flex: 1;
+            max-width: none;
+        }
+
+        /* ── Store Overlay ── */
+        #store-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 25;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0);
+            backdrop-filter: blur(0px);
+            -webkit-backdrop-filter: blur(0px);
+            pointer-events: none;
+            opacity: 0;
+            transition: background 0.35s ease, backdrop-filter 0.35s ease, -webkit-backdrop-filter 0.35s ease, opacity 0.35s ease;
+        }
+
+        #store-screen.show {
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            pointer-events: auto;
+            opacity: 1;
+        }
+
+        .store-card {
+            width: 90%;
+            max-width: clamp(260px, 70vmin, 380px);
+            max-height: 80vh;
+            background: #fff;
+            border-radius: clamp(14px, 4vmin, 24px);
+            padding: clamp(16px, 5vmin, 30px) clamp(14px, 4vmin, 24px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow-y: auto;
+            transform: translateY(60px) scale(0.95);
+            opacity: 0;
+            transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+        }
+
+        .show .store-card {
+            transform: translateY(0) scale(1);
+            opacity: 1;
+        }
+
+        .store-card h2 {
+            font-size: clamp(20px, 6vmin, 32px);
+            color: #222;
+            letter-spacing: clamp(2px, 0.8vmin, 4px);
+            margin-bottom: clamp(10px, 3vmin, 20px);
+        }
+
+        .store-coins {
+            font-size: clamp(14px, 4vmin, 20px);
+            color: #FFD036;
+            letter-spacing: 2px;
+            margin-bottom: clamp(8px, 2.5vmin, 16px);
+            text-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        }
+
+        .store-list {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 55vh;
+            overflow-y: auto;
+            padding: 4px 0;
+        }
+
+        .store-item {
+            background: #f5f5f5;
+            border-radius: clamp(8px, 2.5vmin, 12px);
+            padding: clamp(8px, 2.5vmin, 12px) clamp(8px, 2.5vmin, 14px);
+            display: flex;
+            align-items: center;
+            gap: clamp(6px, 2vmin, 12px);
+        }
+        .store-item.equipped {
+            outline: 3px solid #5BC95F;
+        }
+
+        .store-palette-preview {
+            display: flex;
+            gap: 3px;
+            flex-shrink: 0;
+        }
+        .store-palette-preview .swatch {
+            width: clamp(10px, 3vmin, 14px);
+            height: clamp(10px, 3vmin, 14px);
+            border-radius: 3px;
+        }
+
+        .store-item-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .store-item-name {
+            font-size: clamp(10px, 2.8vmin, 13px);
+            color: #333;
+            letter-spacing: 0.5px;
+        }
+        .store-item-price {
+            font-size: clamp(9px, 2.4vmin, 11px);
+            color: #b8860b;
+        }
+
+        .store-buy-btn {
+            padding: clamp(4px, 1.2vmin, 6px) clamp(8px, 2.5vmin, 12px);
+            border: none;
+            border-radius: clamp(5px, 1.5vmin, 8px);
+            font-family: 'Fredoka One', sans-serif;
+            font-size: clamp(9px, 2.4vmin, 11px);
+            letter-spacing: 1px;
+            cursor: pointer;
+            color: #fff;
+            background: #4DABF7;
+            box-shadow: 0 3px 0 #2B8AD4;
+            white-space: nowrap;
+            transition: transform 0.1s ease;
+        }
+        .store-buy-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #2B8AD4; }
+        .store-buy-btn:disabled { background: #ccc; box-shadow: 0 3px 0 #aaa; cursor: default; color: #999; }
+        .store-buy-btn.cant-afford { background: #aab; box-shadow: 0 3px 0 #889; opacity: 0.7; }
+        .store-buy-btn.owned { background: #5BC95F; box-shadow: 0 3px 0 #3A9E3E; }
+        .store-buy-btn.equipped-btn { background: #9775FA; box-shadow: 0 3px 0 #7048D4; }
+
+        .store-close {
+            margin-top: 16px;
+        }
+
+        /* ── Objectives Overlay ── */
+        #objectives-screen {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 25;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0);
+            backdrop-filter: blur(0px);
+            -webkit-backdrop-filter: blur(0px);
+            pointer-events: none;
+            opacity: 0;
+            transition: background 0.35s ease, backdrop-filter 0.35s ease, -webkit-backdrop-filter 0.35s ease, opacity 0.35s ease;
+        }
+        #objectives-screen.show {
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            pointer-events: auto;
+            opacity: 1;
+        }
+
+        .obj-completion {
+            font-size: clamp(10px, 2.8vmin, 13px);
+            color: rgba(0,0,0,0.4);
+            letter-spacing: 1px;
+            margin-bottom: clamp(4px, 1.5vmin, 10px);
+            width: 100%;
+            text-align: center;
+        }
+
+        .obj-bar-overall {
+            margin-top: 6px;
+            height: 8px;
+            border-radius: 4px;
+        }
+
+        .objectives-list {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 55vh;
+            overflow-y: auto;
+            padding: 4px 0;
+        }
+
+        .obj-item {
+            background: #f5f5f5;
+            border-radius: clamp(8px, 2.5vmin, 12px);
+            padding: clamp(8px, 2.5vmin, 12px) clamp(8px, 2.5vmin, 14px);
+            display: flex;
+            flex-direction: column;
+            gap: clamp(3px, 1vmin, 6px);
+        }
+        .obj-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .obj-desc {
+            font-size: clamp(10px, 2.8vmin, 13px);
+            color: #333;
+            letter-spacing: 0.5px;
+        }
+        .obj-reward {
+            font-size: clamp(9px, 2.5vmin, 12px);
+            color: #b8860b;
+            white-space: nowrap;
+        }
+        .obj-bar {
+            width: 100%;
+            height: 8px;
+            background: #ddd;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .obj-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #FF6B9D, #FF9F43);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        .obj-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .obj-progress {
+            font-size: clamp(9px, 2.4vmin, 11px);
+            color: #999;
+        }
+        .obj-collect {
+            padding: clamp(3px, 1vmin, 5px) clamp(8px, 2.5vmin, 14px);
+            border: none;
+            border-radius: clamp(5px, 1.5vmin, 8px);
+            font-family: 'Fredoka One', sans-serif;
+            font-size: clamp(9px, 2.4vmin, 11px);
+            letter-spacing: 1px;
+            cursor: pointer;
+            color: #fff;
+            background: #5BC95F;
+            box-shadow: 0 3px 0 #3A9E3E;
+            transition: transform 0.1s ease;
+        }
+        .obj-collect:active { transform: translateY(2px); box-shadow: 0 1px 0 #3A9E3E; }
+        .obj-collect:disabled { background: #ccc; box-shadow: 0 3px 0 #aaa; cursor: default; color: #999; }
+        .obj-collected {
+            font-size: clamp(9px, 2.4vmin, 11px);
+            color: #5BC95F;
+            letter-spacing: 1px;
+        }
+
+        .menu-coins {
+            position: absolute;
+            top: clamp(6px, 1.5vmin, 12px);
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: clamp(14px, 4vmin, 22px);
+            color: #FFD036;
+            letter-spacing: 2px;
+            text-shadow: 0 1px 4px rgba(0,0,0,0.15);
+            z-index: 5;
+            display: flex;
+            align-items: center;
+        }
+
+        /* ── Game Over Screen ── */
+        #game-over-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            background: rgba(0,0,0,0);
+            backdrop-filter: blur(0px);
+            -webkit-backdrop-filter: blur(0px);
+            pointer-events: none;
+            opacity: 0;
+            transition: background 0.35s ease, backdrop-filter 0.35s ease, -webkit-backdrop-filter 0.35s ease, opacity 0.35s ease;
+        }
+
+        #game-over-screen.show {
+            background: rgba(0,0,0,0.45);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            pointer-events: auto;
+            opacity: 1;
+        }
+
+        .gameover-card {
+            text-align: center;
+        }
+
+        .gameover-card h2 {
+            font-size: clamp(22px, 7vmin, 36px);
+            color: #222;
+            letter-spacing: clamp(2px, 1vmin, 5px);
+            margin-bottom: clamp(8px, 2.5vmin, 16px);
+        }
+
+        .end-score {
+            font-size: clamp(32px, 11vmin, 56px);
+            color: #222;
+            margin-bottom: 4px;
+        }
+
+        .end-label {
+            font-size: clamp(9px, 2.5vmin, 12px);
+            color: rgba(0,0,0,0.35);
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            margin-bottom: clamp(6px, 2vmin, 14px);
+        }
+
+        .end-best {
+            font-size: clamp(12px, 3.5vmin, 18px);
+            color: rgba(0,0,0,0.45);
+            margin-bottom: 6px;
+        }
+
+        .new-best {
+            font-size: clamp(10px, 3vmin, 14px);
+            color: #FF6B6B;
+            letter-spacing: 3px;
+            margin-bottom: 6px;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+
+        .new-best.show {
+            opacity: 1;
+        }
+
+        .end-coins {
+            font-size: clamp(14px, 4vmin, 22px);
+            color: #FFD036;
+            letter-spacing: 2px;
+            margin-bottom: clamp(10px, 3vmin, 20px);
+            text-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        }
+
+        .shower-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        #game-over-screen .store-card,
+        #objectives-screen .store-card {
+            z-index: 2;
+            position: relative;
+        }
+
+        /* ── Loading Screen ── */
+        #loading-screen {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: #fff;
+            z-index: 30;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 30px;
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        }
+        #loading-screen.show {
+            display: flex;
+            opacity: 1;
+        }
+        .loading-logo {
+            width: clamp(90px, 28vmin, 140px);
+            height: auto;
+            filter: drop-shadow(0 4px 16px rgba(0,0,0,0.1));
+        }
+        .loading-spinner {
+            width: clamp(24px, 7vmin, 36px);
+            height: clamp(24px, 7vmin, 36px);
+            border: 4px solid #eee;
+            border-top-color: #FF9F43;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* ── Splash Screen (first load) ── */
+        #splash-screen {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: #fff;
+            z-index: 50;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.5s ease;
+        }
+        #splash-screen.fade-out {
+            opacity: 0;
+        }
+        .splash-img {
+            width: clamp(180px, 50vmin, 300px);
+            height: auto;
+            filter: drop-shadow(0 4px 16px rgba(0,0,0,0.08));
+        }
+
+        /* ── Sub promo image on menu ── */
+        .menu-sub {
+            width: min(clamp(120px, 36vmin, 200px), 18vh);
+            height: auto;
+            pointer-events: none;
+        }
+
+        /* ── Coin icon (inline) ── */
+        .coin-icon {
+            width: clamp(22px, 6vmin, 36px);
+            height: clamp(22px, 6vmin, 36px);
+            vertical-align: middle;
+            margin-right: 4px;
+            margin-top: -3px;
+        }
+        .coin-icon-sm {
+            width: clamp(18px, 5vmin, 28px);
+            height: clamp(18px, 5vmin, 28px);
+            vertical-align: middle;
+            margin-right: 3px;
+            margin-top: -2px;
+        }
+        .coin-icon-lg {
+            width: clamp(28px, 8vmin, 48px);
+            height: clamp(28px, 8vmin, 48px);
+            vertical-align: middle;
+            margin-right: 5px;
+            margin-top: -4px;
+        }
+
+        /* Admin panel removed for production */
+
+        /* ── Short landscape (YouTube Playables ~270px, small tablets etc.) ── */
+        @media (max-height: 420px) {
+            .menu-sub { display: none !important; }
+
+            .menu-top { top: 1vh; }
+
+            .menu-logo { width: min(clamp(100px, 35vmin, 180px), 22vh); }
+
+            .menu-bottom { gap: 0.5vh; bottom: 1vh; }
+
+            #menu-best { margin-bottom: 1vh !important; font-size: clamp(7px, 2vmin, 10px); }
+
+            .btn-3d { font-size: clamp(10px, 3vmin, 16px); }
+
+            .btn-3d.btn-small { height: min(clamp(28px, 8vmin, 42px), 9vh); }
+
+            .btn-3d.btn-tiny { height: min(clamp(20px, 5.5vmin, 28px), 7vh); }
+
+            .btn-icon { width: clamp(14px, 4vmin, 22px); height: clamp(14px, 4vmin, 22px); }
+
+            .btn-icon-sm { width: clamp(10px, 3vmin, 16px); height: clamp(10px, 3vmin, 16px); }
+
+            .menu-coins { font-size: clamp(10px, 3vmin, 16px); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Splash Screen -->
+    <div id="splash-screen">
+        <img src="splash.png" alt="UK4DEE GAMES" class="splash-img">
+    </div>
+
+    <canvas id="game-canvas"></canvas>
+
+    <div id="ui-overlay"></div>
+
+    <!-- Main Menu -->
+    <div id="menu-screen">
+        <div class="menu-coins" id="menu-coins"></div>
+        <div class="menu-wrapper">
+            <div class="menu-top">
+                <img src="Logo.png" alt="Flow" class="menu-logo">
+            </div>
+
+        </div>
+        <div class="menu-bottom" id="menu-tap-zone">
+            <button class="btn-3d btn-green btn-small" id="btn-play-level" style="width:100%; max-width:clamp(112px, 29vmin, 168px);">PLAY</button>
+            <div class="menu-best" id="menu-best" style="margin-bottom:3vh;"></div>
+            <div class="btn-row">
+                <button class="btn-3d btn-orange btn-small" id="btn-store"><img src="shopping-cart.png" class="btn-icon" alt="Store"></button>
+                <button class="btn-3d btn-pink btn-small" id="btn-objectives"><img src="target.png" class="btn-icon" alt="Objectives"></button>
+            </div>
+            <button class="btn-3d btn-purple btn-tiny" id="btn-theme"><img src="moon.png" class="btn-icon" alt="Theme" id="theme-icon"></button>
+            <img src="Sub.png" alt="" class="menu-sub">
+        </div>
+    </div>
+
+    <!-- Store Overlay -->
+    <div id="store-screen">
+        <div class="store-card">
+            <h2>STORE</h2>
+            <div class="store-coins" id="store-coins"></div>
+            <div class="store-list" id="store-list"></div>
+            <button class="btn-3d btn-red btn-small store-close" id="store-close">CLOSE</button>
+        </div>
+    </div>
+
+    <!-- Objectives Overlay -->
+    <div id="objectives-screen">
+        <canvas id="coin-shower-canvas" class="shower-canvas"></canvas>
+        <div class="store-card">
+            <h2>OBJECTIVES</h2>
+            <div class="obj-completion" id="obj-completion"></div>
+            <div class="objectives-list" id="objectives-list"></div>
+            <button class="btn-3d btn-green btn-small" id="objectives-collect-all" style="display:none; margin-bottom: 8px;">COLLECT ALL</button>
+            <button class="btn-3d btn-red btn-small store-close" id="objectives-close">CLOSE</button>
+        </div>
+    </div>
+
+    <!-- Level Complete -->
+    <div id="game-over-screen">
+        <canvas id="confetti-canvas" class="shower-canvas"></canvas>
+        <div class="store-card gameover-card">
+            <h2>COMPLETE!</h2>
+            <div class="end-score" id="end-score"></div>
+            <div class="end-label" style="display:none;">SCORE</div>
+            <div class="end-best" id="end-best"></div>
+            <div class="new-best" id="new-best-label">PERFECT!</div>
+            <div class="end-coins" id="end-coins">+0 COINS</div>
+            <div class="btn-row" style="margin-top: 8px;">
+                <button class="btn-3d btn-yellow btn-small" id="restart-btn">LEVELS</button>
+                <button class="btn-3d btn-green btn-small" id="next-level-btn">NEXT</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pause Screen (in-game menu) -->
+    <div id="pause-screen">
+        <div class="store-card" style="padding-top: clamp(20px, 6vmin, 36px); padding-bottom: clamp(20px, 6vmin, 36px);">
+            <h2>PAUSED</h2>
+            <div class="btn-row" style="margin-bottom: 10px;">
+                <button class="btn-3d btn-green btn-small" id="pause-resume-btn">RESUME</button>
+            </div>
+            <div class="btn-row" style="margin-bottom: 10px;">
+                <button class="btn-3d btn-orange btn-small" id="pause-restart-btn">RESTART</button>
+            </div>
+            <div class="btn-row">
+                <button class="btn-3d btn-red btn-small" id="pause-menu-btn">MENU</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- YouTube SDK Pause Overlay -->
+    <div id="yt-pause-overlay">
+        <div class="pause-text">PAUSED</div>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+        <img src="Logo.png" alt="Flow" class="loading-logo">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <!-- Admin panel removed for production -->
+
+    <script src="game.js" nonce="ItXjHmsnnkZQj8m6RJravQ"></script>
+</body>
+</html>
